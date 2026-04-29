@@ -4,10 +4,7 @@
   <meta charset="UTF-8" />
   <title>Supermarchés autour de moi</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -15,21 +12,67 @@
       padding: 0;
       background: #f1f5f9;
     }
-
     h1 {
       text-align: center;
       margin: 20px 0;
       font-size: 24px;
     }
-
     #map {
       width: 90%;
       height: 400px;
       margin: auto;
       border-radius: 10px;
       border: 1px solid #ccc;
+      overflow: hidden;
+      position: relative;
     }
-
+    #map-placeholder {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(135deg, #e0f2fe 0%, #f0fdf4 50%, #fefce8 100%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 10;
+      border-radius: 10px;
+      transition: opacity 0.4s;
+    }
+    #map-placeholder.hidden { opacity: 0; pointer-events: none; }
+    .placeholder-icon {
+      width: 72px; height: 72px;
+      background: white;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+    }
+    .placeholder-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: #1e40af;
+      margin: 0;
+    }
+    .placeholder-sub {
+      font-size: 13px;
+      color: #64748b;
+      margin: 0;
+      text-align: center;
+      padding: 0 20px;
+      line-height: 1.5;
+    }
+    .placeholder-dots {
+      display: flex; gap: 6px;
+    }
+    .placeholder-dots span {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #bfdbfe;
+    }
+    .placeholder-dots span:nth-child(1) { background: #3b82f6; }
+    .placeholder-dots span:nth-child(2) { background: #60a5fa; }
+    .placeholder-dots span:nth-child(3) { background: #93c5fd; }
     .btn {
       display: block;
       margin: 20px auto;
@@ -39,38 +82,36 @@
       border: none;
       border-radius: 8px;
       cursor: pointer;
+      font-size: 16px;
     }
-
-    .btn:hover {
-      background-color: #2563eb;
-    }
-
-    ul {
-      list-style: none;
-      padding: 0 20px;
-    }
-
+    .btn:hover { background-color: #2563eb; }
+    .btn:disabled { background-color: #93c5fd; cursor: not-allowed; }
+    ul { list-style: none; padding: 0 20px; }
     li {
       background: white;
       margin: 10px 0;
       padding: 10px;
       border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
       cursor: pointer;
     }
-
-    li:hover {
-      background: #e0f2fe;
-    }
+    li:hover { background: #e0f2fe; }
+    #status { text-align: center; color: #64748b; font-size: 14px; margin: 8px 0; }
   </style>
 </head>
 <body>
-
   <h1>🛒 Supermarchés autour de moi</h1>
-  <button class="btn" onclick="localiser()">Afficher sur la carte</button>
-  <div id="map"></div>
-
-  <h2 style="text-align:center;margin-top:20px;">Liste des supermarchés autoure de vous :</h2>
+  <button class="btn" id="btn" onclick="localiser()">Afficher sur la carte</button>
+  <p id="status"></p>
+  <div id="map">
+    <div id="map-placeholder">
+      <div class="placeholder-icon">🗺️</div>
+      <p class="placeholder-title">Carte interactive</p>
+      <p class="placeholder-sub">Cliquez sur le bouton ci-dessus pour localiser les supermarchés autour de vous</p>
+      <div class="placeholder-dots"><span></span><span></span><span></span></div>
+    </div>
+  </div>
+  <h2 style="text-align:center;margin-top:20px;">Liste des supermarchés autour de vous :</h2>
   <ul id="liste-supermarches"></ul>
 
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -78,70 +119,116 @@
     let map;
 
     function localiser() {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition((position) => {
+      if (!navigator.geolocation) {
+        alert("La géolocalisation n'est pas supportée.");
+        return;
+      }
+      document.getElementById('btn').disabled = true;
+      document.getElementById('status').textContent = 'Localisation en cours…';
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
           const lat = position.coords.latitude;
           const lng = position.coords.longitude;
 
-          // Initialiser la carte
-          map = L.map("map").setView([lat, lng], 15);
+          // ✅ FIX 1 : CartoDB à la place d'OpenStreetMap (pas de blocage 403)
+          // Cacher le placeholder
+          const ph = document.getElementById('map-placeholder');
+          if (ph) ph.classList.add('hidden');
 
-          // Fond de carte
-          L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-            attribution: '© OpenStreetMap contributors',
-          }).addTo(map);
+          if (!map) {
+            map = L.map("map").setView([lat, lng], 15);
+            L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
+              attribution: '© OpenStreetMap © CartoDB',
+              maxZoom: 19
+            }).addTo(map);
+          } else {
+            map.setView([lat, lng], 15);
+          }
 
-          // Marqueur utilisateur
           L.marker([lat, lng])
             .addTo(map)
             .bindPopup("📍 Vous êtes ici")
             .openPopup();
 
-          // Charger les supermarchés autour
           chargerSupermarches(lat, lng);
-        });
-      } else {
-        alert("La géolocalisation n'est pas supportée.");
-      }
+        },
+        (err) => {
+          document.getElementById('btn').disabled = false;
+          document.getElementById('status').textContent = '';
+          const msgs = { 1: 'Accès refusé.', 2: 'Position indisponible.', 3: 'Délai dépassé.' };
+          alert(msgs[err.code] || 'Erreur de géolocalisation.');
+        },
+        { enableHighAccuracy: true, timeout: 10000 }
+      );
     }
 
-    function chargerSupermarches(lat, lng) {
-      const rayon = 2000; // 2 km
-      const url = `https://overpass-api.de/api/interpreter?data=[out:json];node[shop=supermarket](around:${rayon},${lat},${lng});out;`;
+    // ✅ FIX 2 : utiliser POST + fallback sur plusieurs serveurs Overpass
+    const ENDPOINTS = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter',
+      'https://maps.mail.ru/osm/tools/overpass/api/interpreter'
+    ];
 
-      fetch(url)
-        .then((res) => res.json())
-        .then((data) => {
-          const liste = document.getElementById("liste-supermarches");
-          liste.innerHTML = "";
+    async function chargerSupermarches(lat, lng) {
+      document.getElementById('status').textContent = 'Recherche des supermarchés…';
+      const rayon = 2000;
+      const query = `[out:json][timeout:20];node["shop"~"supermarket|hypermarket|convenience|grocery"](around:${rayon},${lat},${lng});out;`;
 
-          if (data.elements.length === 0) {
-            liste.innerHTML = "<li>Aucun supermarché trouvé.</li>";
-            return;
-          }
-
-          data.elements.forEach((element, index) => {
-            const nom = element.tags.name || `Supermarché ${index + 1}`;
-            const latLng = [element.lat, element.lon];
-
-            // Marqueur sur la carte
-            const marker = L.marker(latLng).addTo(map);
-            marker.bindPopup(`🛒 ${nom}`);
-
-            // Ajouter à la liste
-            const li = document.createElement("li");
-            li.textContent = nom;
-            li.onclick = () => {
-              map.setView(latLng, 17);
-              marker.openPopup();
-            };
-            liste.appendChild(li);
+      let data = null;
+      for (let i = 0; i < ENDPOINTS.length; i++) {
+        try {
+          document.getElementById('status').textContent = `Chargement… (tentative ${i+1}/${ENDPOINTS.length})`;
+          const ctrl = new AbortController();
+          const timer = setTimeout(() => ctrl.abort(), 8000);
+          const res = await fetch(ENDPOINTS[i], {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: 'data=' + encodeURIComponent(query),
+            signal: ctrl.signal
           });
-        })
-        .catch((err) => {
-          console.error(err);
-          alert("Erreur de chargement des supermarchés.");
-        });
+          clearTimeout(timer);
+          if (!res.ok) throw new Error('HTTP ' + res.status);
+          data = await res.json();
+          break; // succès, on sort de la boucle
+        } catch (e) {
+          console.warn('Endpoint', i, 'échoué:', e.message);
+        }
+      }
+
+      document.getElementById('btn').disabled = false;
+
+      if (!data) {
+        document.getElementById('status').textContent = 'Impossible de contacter les serveurs.';
+        return;
+      }
+
+      const liste = document.getElementById("liste-supermarches");
+      liste.innerHTML = "";
+
+      if (!data.elements || data.elements.length === 0) {
+        document.getElementById('status').textContent = 'Aucun supermarché trouvé dans un rayon de 2 km.';
+        liste.innerHTML = "<li>Aucun supermarché trouvé.</li>";
+        return;
+      }
+
+      document.getElementById('status').textContent = `${data.elements.length} supermarché(s) trouvé(s)`;
+
+      data.elements.forEach((element, index) => {
+        const nom = element.tags.name || `Supermarché ${index + 1}`;
+        const latLng = [element.lat, element.lon];
+
+        const marker = L.marker(latLng).addTo(map);
+        marker.bindPopup(`🛒 ${nom}`);
+
+        const li = document.createElement("li");
+        li.textContent = `🛒 ${nom}`;
+        li.onclick = () => {
+          map.setView(latLng, 17);
+          marker.openPopup();
+        };
+        liste.appendChild(li);
+      });
     }
   </script>
 </body>
